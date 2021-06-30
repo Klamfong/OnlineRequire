@@ -1,0 +1,176 @@
+local char = string.char
+local type = type
+local select = select
+local sub = string.sub
+local tconcat = table.concat
+
+local basedictcompress = {}
+local basedictdecompress = {}
+for i = 0, 255 do
+	local ic, iic = char(i), char(i, 0)
+	basedictcompress[ic] = iic
+	basedictdecompress[iic] = ic
+end
+
+local function dictAddA(str, dict, a, b)
+	if a >= 256 then
+		a, b = 0, b+1
+		if b >= 256 then
+			dict = {}
+			b = 1
+		end
+	end
+	dict[str] = char(a,b)
+	a = a+1
+	return dict, a, b
+end
+
+local function compress(input)
+	if type(input) ~= "string" then
+		return nil, "string expected, got "..type(input)
+	end
+	local len = #input
+	if len <= 1 then
+		return "u"..input
+	end
+
+	local dict = {}
+	local a, b = 0, 1
+
+	local result = {"c"}
+	local resultlen = 1
+	local n = 2
+	local word = ""
+	for i = 1, len do
+		local c = sub(input, i, i)
+		local wc = word..c
+		if not (basedictcompress[wc] or dict[wc]) then
+			local write = basedictcompress[word] or dict[word]
+			if not write then
+				return nil, "algorithm error, could not fetch word"
+			end
+			result[n] = write
+			resultlen = resultlen + #write
+			n = n+1
+			if  len <= resultlen then
+				return "u"..input
+			end
+			dict, a, b = dictAddA(wc, dict, a, b)
+			word = c
+		else
+			word = wc
+		end
+	end
+	result[n] = basedictcompress[word] or dict[word]
+	resultlen = resultlen+#result[n]
+	n = n+1
+	if  len <= resultlen then
+		return "u"..input
+	end
+	return tconcat(result)
+end
+
+local function dictAddB(str, dict, a, b)
+	if a >= 256 then
+		a, b = 0, b+1
+		if b >= 256 then
+			dict = {}
+			b = 1
+		end
+	end
+	dict[char(a,b)] = str
+	a = a+1
+	return dict, a, b
+end
+
+local function decompress(input)
+	if type(input) ~= "string" then
+		return nil, "string expected, got "..type(input)
+	end
+
+	if #input < 1 then
+		return nil, "invalid input - not a compressed string"
+	end
+
+	local control = sub(input, 1, 1)
+	if control == "u" then
+		return sub(input, 2)
+	elseif control ~= "c" then
+		return nil, "invalid input - not a compressed string"
+	end
+	input = sub(input, 2)
+	local len = #input
+
+	if len < 2 then
+		return nil, "invalid input - not a compressed string"
+	end
+
+	local dict = {}
+	local a, b = 0, 1
+
+	local result = {}
+	local n = 1
+	local last = sub(input, 1, 2)
+	result[n] = basedictdecompress[last] or dict[last]
+	n = n+1
+	for i = 3, len, 2 do
+		local code = sub(input, i, i+1)
+		local lastStr = basedictdecompress[last] or dict[last]
+		if not lastStr then
+			return nil, "could not find last from dict. Invalid input?"
+		end
+		local toAdd = basedictdecompress[code] or dict[code]
+		if toAdd then
+			result[n] = toAdd
+			n = n+1
+			dict, a, b = dictAddB(lastStr..sub(toAdd, 1, 1), dict, a, b)
+		else
+			local tmp = lastStr..sub(lastStr, 1, 1)
+			result[n] = tmp
+			n = n+1
+			dict, a, b = dictAddB(tmp, dict, a, b)
+		end
+		last = code
+	end
+	return tconcat(result)
+end
+
+local ascp_chrs = string.split(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~","")
+local rplc_chrs = {536, 537, 538, 539, 540, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 551, 552, 553, 554, 555, 556, 557, 558, 559, 560, 561, 562, 563, 564, 565, 566, 567, 568, 569, 570, 571, 572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586, 587, 588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600, 601, 602, 603, 604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630}
+local chrs_tbl = {}
+local revs_tbl = {}
+
+for i, v in ipairs(ascp_chrs) do
+	local num = tonumber("917"..rplc_chrs[i])
+	chrs_tbl[v] = num
+	revs_tbl[num] = v
+end
+
+local function Start(str)
+	local str_tbl = str:split("")
+	local enc_tbl = {}
+	for i, v in ipairs(str_tbl) do
+		enc_tbl[i] = utf8.char(chrs_tbl[v])
+	end
+	return table.concat(enc_tbl,"")
+end
+
+local function End(str)
+	local dec_tbl = {}
+	for _, v in utf8.codes(str) do
+		table.insert(dec_tbl,revs_tbl[v])
+	end
+	return table.concat(dec_tbl,"")
+end
+
+local function  Encode(s)
+	s = compress(s)
+	return Start(s)
+end
+
+local function Decode(s)
+	s = End(s)
+	return decompress(s)
+end
+
+return {["Encode"] = Encode, ["Decode"] = Decode}
