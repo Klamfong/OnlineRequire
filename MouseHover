@@ -1,0 +1,96 @@
+local Mouse_Hover = {}
+Mouse_Hover.__index = Mouse_Hover
+
+Mouse_Hover.Active_Objects = {}
+Mouse_Hover.Hover_Objects = {}
+Mouse_Hover.Mouse_Functions = {
+    [true] = {},
+    [false] = {}
+}
+
+local PlayerService = game:GetService("Players")
+local Player = PlayerService.LocalPlayer
+local PlayerMouse = Player:GetMouse()
+local PlayerGui = Player:WaitForChild("PlayerGui")
+
+function Mouse_Hover.new(Object)
+    local NewObject = setmetatable({
+        __object = Object,
+        __name = Object.Name
+    }, Mouse_Hover)
+
+    Mouse_Hover.Hover_Objects[Object] = NewObject
+
+    return NewObject
+end
+
+function Mouse_Hover:OnMouseEnter(Function)
+    Mouse_Hover.Mouse_Functions[true][self.__object] = Function
+end
+
+function Mouse_Hover:OnMouseLeave(Function)
+    Mouse_Hover.Mouse_Functions[false][self.__object] = Function
+end
+
+function Mouse_Hover:DisconnectMouseEnter()
+    Mouse_Hover.Mouse_Functions[true][self.__object] = nil
+end
+
+function Mouse_Hover:DisconnectMouseLeave()
+    Mouse_Hover.Mouse_Functions[false][self.__object] = nil
+end
+
+function Mouse_Hover:Disconnect()
+    Mouse_Hover.Mouse_Functions[true][self.__object] = nil
+    Mouse_Hover.Mouse_Functions[false][self.__object] = nil
+end
+
+function Mouse_Hover.SetMouseGroupOnEnter(Name, Function)
+    Mouse_Hover.Mouse_Functions[true][Name] = Function
+end
+
+function Mouse_Hover.SetMouseGroupOnLeave(Name, Function)
+    Mouse_Hover.Mouse_Functions[false][Name] = Function
+end
+
+function Mouse_Hover.RemoveMouseGroupFromEnter(Name)
+    Mouse_Hover.Mouse_Functions[true][Name] = nil
+end
+
+function Mouse_Hover.RemoveMouseGroupFromLeave(Name)
+    Mouse_Hover.Mouse_Functions[false][Name] = nil
+end
+
+local function HoverFunction(Object, IsHovering)
+    local Function = Mouse_Hover.Mouse_Functions[IsHovering][Object] or Mouse_Hover.Mouse_Functions[IsHovering][Object.Name]
+
+    if Function then
+        Function(Object)
+    end
+
+    if IsHovering then
+        Mouse_Hover.Active_Objects[Object] = true
+    else
+        Mouse_Hover.Active_Objects[Object] = nil
+    end
+end
+
+PlayerMouse.Move:Connect(function()
+    local GUIObjects = PlayerGui:GetGuiObjectsAtPosition(PlayerMouse.X, PlayerMouse.Y) 
+
+    for i = 1, #GUIObjects do
+        local Object = GUIObjects[i]
+
+        if Mouse_Hover.Active_Objects[Object] then continue end
+
+        HoverFunction(Object, true)
+    end
+
+    for i,v in pairs(Mouse_Hover.Active_Objects) do
+        if not table.find(GUIObjects, i) or false then
+            HoverFunction(i, false)
+        end
+    end
+end)
+
+return Mouse_Hover
