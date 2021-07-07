@@ -1,0 +1,145 @@
+--!nocheck
+
+-->> Setup 
+local Replicated_Storage_Service = game:GetService("ReplicatedStorage") ; local Core_Modules = Replicated_Storage_Service.Core_Modules ; local wait, Services, WaitForChild, FindFirstChild, ClearWaitedChild, ClearFoundChild, require = unpack(require(Core_Modules.Utility))
+
+local Signals = {}
+Signals.__index = Signals
+Signals.Active_Signals = {}
+
+local Run_Service = Services.RunService
+local Heartbeat = Run_Service.Heartbeat
+local Os_Time = os.time
+local Table_Find = table.find
+local Corountine_Wrap = coroutine.wrap
+local Instance_new = Instance.new
+
+function Signals.new(Name)
+	local Signal = {
+		Active = true,
+		LastFired = Os_Time(),
+		AlreadyFired = false,
+		WaitBindable = Instance_new("BindableEvent"), -- woah look the only use bindables have, waiting LOL
+		Functions = {}
+	}
+
+	Signals.Active_Signals[Name] = Signal 
+	return setmetatable(Signal, Signals)
+end
+
+function Signals:LastFired()
+	return self.LastFired
+end
+
+function Signals.LastFiredParallel(Name)
+	local Signal = Signals.Active_Signals[Name]
+
+	if Signal then
+		Signal:LastFired()
+	end
+end
+
+function Signals:Connect(Function)
+	local Signal = setmetatable({
+		Connected = true,
+		Function = Function,
+		Signal = self,
+		Bindale = Instance.new("BindableEvent")
+	}, Signals)
+	
+	self.Functions[#self.Functions + 1] = Signal
+	return Signal
+end
+
+function Signals.ConnectParallel(Name, Function)
+	local Signal = Signals.Active_Signals[Name]
+
+	if Signal then
+		Signal:Connect(Function)
+	end
+end
+
+function Signals:Disconnect(Function)
+	if not self.Connected then return end
+
+	local Signal = self.Signal
+	local Functions = Signal.Functions
+
+	local ConnectionIndex = Table_Find(Functions, self)
+	if not ConnectionIndex then return end
+
+	Functions[ConnectionIndex] = nil
+	self.Connected = false
+	self.Signal = nil
+end
+
+function Signals.DisconnectParallel(Name, Function)
+	local Signal = Signals.Active_Signals[Name]
+
+	if Signal then
+		Signal:Disconnect(Function)
+	end
+end
+
+function Signals:Fire(FireWithYield, ...)
+	local Functions = self.Functions
+	self.LastFired = Os_Time()
+	self.AlreadyFired = true
+
+	if not FireWithYield then
+		for i = 1, #Functions do
+			Corountine_Wrap(Functions[i].Function)(...)
+		end
+		self.WaitBindable:Fire()
+	else
+		for i = 1, #Functions do
+			Functions[i].Function(...)
+		end
+		self.WaitBindable:Fire()
+	end
+end
+
+function Signals.FireParallel(Name, FireWithYield, ...)
+	local Signal = Signals.Active_Signals[Name]
+
+	if Signal then
+		Signal:Fire(FireWithYield, ...)
+	end
+end
+
+function Signals:Wait()
+	if self.AlreadyFired then --> Deferred Lua Support
+		return true
+	end
+
+	  self.WaitBindable.Event:Wait()
+end
+
+function Signals.WaitParallel(Name, Exhaust, HasAlreadyFired)
+	local Signal = Signals.Active_Signals[Name]
+
+	if Signal then
+		return Signal:Wait(Exhaust, HasAlreadyFired)
+	end
+end
+
+function Signals:Destroy()
+	local Functions = self.Functions
+
+	self.Active = false
+	for i = 1, #Functions do
+		Functions[i]:Disconnect()
+	end
+
+	self.Functions = {}
+end
+
+function Signals.DestroyParallel(Name)
+	local Signal = Signals.Active_Signals[Name]
+
+	if Signal then
+		Signal:Destroy()
+	end
+end
+
+return Signals
